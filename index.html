@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transaction Ledger & Client Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#eff6ff', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8' }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen transition-colors duration-200">
+
+  <div class="max-w-6xl mx-auto px-4 py-8">
+    
+    <!-- Top Header -->
+    <header class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-800">
+      <div>
+        <h1 class="text-2xl font-bold tracking-tight">Transaction Ledger</h1>
+        <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400">Manage client entries, payments, and financial analytics.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="exportBtn" onclick="exportCSV()" class="px-3 py-1.5 text-xs font-medium bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 rounded-lg transition">Export CSV</button>
+        <button id="themeToggle" onclick="toggleTheme()" class="px-3 py-1.5 text-xs font-medium bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 rounded-lg transition">☀️ Light</button>
+      </div>
+    </header>
+
+    <!-- KPI Summary Grid -->
+    <section class="grid grid-cols-2 md:grid-cols-4 gap-4 my-6">
+      <div class="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
+        <span class="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase">Total Revenue</span>
+        <div id="kpiTotal" class="text-2xl font-extrabold mt-1 text-emerald-600 dark:text-emerald-400">₹0</div>
+      </div>
+      <div class="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
+        <span class="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase">Average Ticket</span>
+        <div id="kpiAvg" class="text-2xl font-extrabold mt-1">₹0</div>
+      </div>
+      <div class="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
+        <span class="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase">Total Entries</span>
+        <div id="kpiCount" class="text-2xl font-extrabold mt-1">0</div>
+      </div>
+      <div class="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
+        <span class="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase">Top Spender</span>
+        <div id="kpiTop" class="text-lg font-bold mt-1 truncate text-brand-600 dark:text-brand-500">-</div>
+      </div>
+    </section>
+
+    <!-- Content Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      
+      <!-- Entry Input Form -->
+      <div class="lg:col-span-1">
+        <div class="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-sm sticky top-6">
+          <h2 class="text-base font-semibold mb-4 text-slate-900 dark:text-white">Add New Entry</h2>
+          <form id="ledgerForm" onsubmit="addEntry(event)" class="space-y-4">
+            <div>
+              <label class="block text-xs font-medium mb-1 text-slate-600 dark:text-slate-300">Client / Entity Name *</label>
+              <input type="text" id="client" required placeholder="e.g. Yuvraj" class="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+            </div>
+            <div>
+              <label class="block text-xs font-medium mb-1 text-slate-600 dark:text-slate-300">Amount (₹) *</label>
+              <input type="number" id="amount" step="0.01" required placeholder="e.g. 500" class="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+            </div>
+            <div>
+              <label class="block text-xs font-medium mb-1 text-slate-600 dark:text-slate-300">Date</label>
+              <input type="date" id="date" class="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+            </div>
+            <div>
+              <label class="block text-xs font-medium mb-1 text-slate-600 dark:text-slate-300">Description / Note (Optional)</label>
+              <textarea id="description" rows="2" placeholder="e.g. Banner edit service" class="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"></textarea>
+            </div>
+            <button type="submit" class="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-medium rounded-lg text-sm transition shadow">Save Entry</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Ledger Table and Client Summary -->
+      <div class="lg:col-span-2 space-y-6">
+        
+        <!-- Master Ledger -->
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-sm overflow-hidden">
+          <div class="p-4 border-b border-slate-200 dark:border-slate-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <h2 class="text-base font-semibold">Ledger Entries</h2>
+            <input type="text" id="searchInput" oninput="render()" placeholder="Search client or note..." class="px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 w-full sm:w-48">
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs sm:text-sm">
+              <thead class="bg-slate-100 dark:bg-slate-900/50 uppercase text-slate-500 text-[10px] sm:text-xs">
+                <tr>
+                  <th class="p-3">Date</th>
+                  <th class="p-3">Client</th>
+                  <th class="p-3">Description</th>
+                  <th class="p-3 text-right">Amount</th>
+                  <th class="p-3 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody id="ledgerTable" class="divide-y divide-slate-200 dark:divide-slate-700/50">
+                <!-- Rows injected via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Client Totals Breakdown -->
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-sm p-5">
+          <h2 class="text-base font-semibold mb-3">Client Totals Breakdown</h2>
+          <div id="clientBreakdown" class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+            <!-- Summary cards injected via JS -->
+          </div>
+        </div>
+
+        <div class="text-right">
+          <button onclick="resetDefaults()" class="text-xs text-rose-500 hover:underline">Reset to Default Data</button>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const defaultData = [
+      { id: 1, date: '', client: 'lyrics edit', description: 'Unnamed project', amount: 100 },
+      { id: 2, date: '2025-03-27', client: 'yuvraj', description: '', amount: 500 },
+      { id: 3, date: '2025-07-25', client: 'gaara unban', description: '', amount: 100 },
+      { id: 4, date: '2025-08-21', client: 'satyam', description: '', amount: 200 },
+      { id: 5, date: '2025-11-04', client: 'heroyt', description: '', amount: 80 },
+      { id: 6, date: '2025-11-07', client: 'heroyt', description: '', amount: 80 },
+      { id: 7, date: '2026-03-09', client: 'prime', description: '', amount: 100 },
+      { id: 8, date: '2026-03-19', client: 'spidxsam', description: '', amount: 100 },
+      { id: 9, date: '2026-05-26', client: 'mickeychan', description: '', amount: 500 },
+      { id: 10, date: '2026-06-25', client: 'thebex', description: '', amount: 50 },
+      { id: 11, date: '2026-07-23', client: 'ketsu', description: '', amount: 75 }
+    ];
+
+    let entries = JSON.parse(localStorage.getItem('ledger_data')) || defaultData;
+
+    function save() {
+      localStorage.setItem('ledger_data', JSON.stringify(entries));
+      render();
+    }
+
+    function addEntry(e) {
+      e.preventDefault();
+      const client = document.getElementById('client').value.trim();
+      const amount = parseFloat(document.getElementById('amount').value);
+      const date = document.getElementById('date').value;
+      const description = document.getElementById('description').value.trim();
+
+      entries.push({ id: Date.now(), client, amount, date, description });
+      document.getElementById('ledgerForm').reset();
+      save();
+    }
+
+    function deleteEntry(id) {
+      entries = entries.filter(item => item.id !== id);
+      save();
+    }
+
+    function resetDefaults() {
+      if (confirm("Reset ledger to initial 11 default entries?")) {
+        entries = [...defaultData];
+        save();
+      }
+    }
+
+    function render() {
+      const search = document.getElementById('searchInput').value.toLowerCase();
+      const filtered = entries.filter(item => 
+        item.client.toLowerCase().includes(search) || 
+        item.description.toLowerCase().includes(search)
+      );
+
+      const tableBody = document.getElementById('ledgerTable');
+      tableBody.innerHTML = filtered.length ? '' : '<tr><td colspan="5" class="p-4 text-center text-slate-400">No entries found</td></tr>';
+
+      let total = 0;
+      const clientTotals = {};
+
+      filtered.forEach(item => {
+        total += item.amount;
+        clientTotals[item.client] = (clientTotals[item.client] || 0) + item.amount;
+
+        const row = document.createElement('tr');
+        row.className = "hover:bg-slate-50 dark:hover:bg-slate-700/30 transition";
+        row.innerHTML = `
+          <td class="p-3 text-slate-500 dark:text-slate-400">${item.date ? new Date(item.date).toLocaleDateString('en-GB') : '<em>Undated</em>'}</td>
+          <td class="p-3 font-medium text-slate-900 dark:text-white">${escapeHtml(item.client)}</td>
+          <td class="p-3 text-slate-500 dark:text-slate-400">${escapeHtml(item.description) || '-'}</td>
+          <td class="p-3 text-right font-semibold text-emerald-600 dark:text-emerald-400">₹${item.amount.toFixed(2)}</td>
+          <td class="p-3 text-center">
+            <button onclick="deleteEntry(${item.id})" class="text-rose-500 hover:text-rose-700 font-bold px-2 py-1">✕</button>
+          </td>
+        `;
+        tableBody.appendChild(row);
+      });
+
+      // KPIs
+      document.getElementById('kpiTotal').textContent = `₹${total.toLocaleString('en-IN')}`;
+      document.getElementById('kpiAvg').textContent = filtered.length ? `₹${(total / filtered.length).toFixed(2)}` : '₹0';
+      document.getElementById('kpiCount').textContent = filtered.length;
+
+      // Top client calculation across all entries
+      const allClientTotals = {};
+      entries.forEach(i => allClientTotals[i.client] = (allClientTotals[i.client] || 0) + i.amount);
+      const topClient = Object.entries(allClientTotals).sort((a,b) => b[1] - a[1])[0];
+      document.getElementById('kpiTop').textContent = topClient ? `${topClient[0]} (₹${topClient[1]})` : '-';
+
+      // Client Breakdown UI
+      const breakdownEl = document.getElementById('clientBreakdown');
+      breakdownEl.innerHTML = '';
+      Object.entries(clientTotals).sort((a,b) => b[1] - a[1]).forEach(([client, amt]) => {
+        const card = document.createElement('div');
+        card.className = "p-2.5 bg-slate-50 dark:bg-slate-900/60 rounded-lg border border-slate-200 dark:border-slate-700/50";
+        card.innerHTML = `<div class="font-medium truncate">${escapeHtml(client)}</div><div class="text-xs text-slate-500 font-semibold mt-0.5">₹${amt}</div>`;
+        breakdownEl.appendChild(card);
+      });
+    }
+
+    function toggleTheme() {
+      const html = document.documentElement;
+      const btn = document.getElementById('themeToggle');
+      if (html.classList.contains('dark')) {
+        html.classList.remove('dark');
+        btn.textContent = '🌙 Dark';
+      } else {
+        html.classList.add('dark');
+        btn.textContent = '☀️ Light';
+      }
+    }
+
+    function exportCSV() {
+      let csv = 'ID,Date,Client,Description,Amount\n';
+      entries.forEach(e => {
+        csv += `"${e.id}","${e.date}","${e.client}","${e.description}","${e.amount}"\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.setAttribute('href', url);
+      a.setAttribute('download', 'ledger_export.csv');
+      a.click();
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/[&<>'"]/g, 
+        tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+      );
+    }
+
+    render();
+  </script>
+</body>
+</html>
