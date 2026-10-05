@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <style>
     :root{--bg:#0d0d0d;--panel:#121212;--panel2:#171717;--text:#f5f1e8;--muted:#969696;--border:#292929;--gold:#d6b45b;--gold2:#9f8034;--green:#73c991;--red:#e07b7b;--blue:#8aa9df;--radius:16px}
@@ -104,6 +105,13 @@
     @media(max-width:1100px){.cards{grid-template-columns:repeat(2,1fr)}.grid2,.grid3{grid-template-columns:1fr}.analysis-grid{grid-template-columns:1fr}}
     @media(max-width:800px){.sidebar{transform:translateX(-100%);transition:.25s}.sidebar.open{transform:translateX(0)}.main{margin-left:0;width:100%}.topbar{padding:0 18px}.mobile-menu{display:inline-flex}.page{padding:24px 16px}.hero{align-items:start;flex-direction:column}.cards{grid-template-columns:1fr 1fr}.filters .input{width:100%}.filters{width:100%}}
     @media(max-width:520px){.cards{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}.field.full{grid-column:auto}.topbar-title{font-size:22px}.metric{font-size:31px}}
+  
+    .cloud-pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);background:#151515;color:#aaa;border-radius:999px;padding:7px 10px;font-size:11px}
+    .cloud-dot{width:7px;height:7px;border-radius:50%;background:#777}.cloud-dot.on{background:var(--green);box-shadow:0 0 0 4px rgba(115,201,145,.08)}
+    .auth-modal{width:min(430px,100%);background:#111;border:1px solid #333;border-radius:18px;box-shadow:0 30px 100px rgba(0,0,0,.6);padding:24px}
+    .auth-modal h3{font-family:"Cormorant Garamond",Georgia,serif;font-size:32px;margin:0 0 6px}.auth-modal p{font-size:12px;color:#888;line-height:1.6;margin:0 0 20px}
+    .auth-actions{display:flex;gap:8px;margin-top:14px}.auth-error{color:var(--red);font-size:11px;margin-top:10px;min-height:16px}
+    .user-email{font-size:10px;color:#777;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   </style>
 </head>
 <body>
@@ -123,7 +131,7 @@
       <button id="importJson"><i data-lucide="upload"></i>Restore backup</button>
       <input id="importFile" type="file" accept=".json,application/json" hidden>
     </nav>
-    <div class="sidebar-bottom"><div class="status"><span class="dot"></span> Saved locally on this device</div></div>
+    <div class="sidebar-bottom"><div class="status" id="cloudStatus"><span class="dot"></span> Local-only mode</div></div>
   </aside>
 
   <main class="main">
@@ -132,7 +140,7 @@
         <button class="icon-btn mobile-menu" id="menuBtn"><i data-lucide="menu"></i></button>
         <div><div class="eyebrow">Personal finance workspace</div><div class="topbar-title" id="topTitle">Overview</div></div>
       </div>
-      <div class="top-actions">
+      <div class="top-actions"><div class="cloud-pill" id="cloudPill"><span class="cloud-dot" id="cloudDot"></span><span id="cloudLabel">Cloud not connected</span></div><button class="ghost-btn" id="cloudBtn">Cloud sync</button>
         <button class="ghost-btn" id="themeBtn"><i data-lucide="sun"></i><span>Light</span></button>
         <button class="primary-btn" id="addIncomeTop"><i data-lucide="plus"></i>Add income</button>
       </div>
@@ -203,10 +211,28 @@
 <div class="modal-backdrop" id="modalBackdrop">
   <div class="modal"><div class="modal-head"><h3 id="modalTitle">Add income</h3><button class="icon-btn" id="closeModal"><i data-lucide="x"></i></button></div><div class="modal-body" id="modalBody"></div></div>
 </div>
+
+<div class="modal-backdrop" id="authBackdrop">
+  <div class="auth-modal">
+    <div class="eyebrow">Cloud sync</div><h3>Your Piggi Bank, everywhere.</h3>
+    <p>Create an account or sign in to sync your transactions, expenses and goals across devices. Your existing local data will be offered for migration the first time you connect.</p>
+    <form id="authForm">
+      <div class="field"><label>Email</label><input class="input" id="authEmail" type="email" required placeholder="you@example.com"></div>
+      <div class="field" style="margin-top:10px"><label>Password</label><input class="input" id="authPassword" type="password" minlength="6" required placeholder="At least 6 characters"></div>
+      <div class="auth-actions"><button class="primary-btn" type="submit" id="authSubmit">Sign in</button><button class="ghost-btn" type="button" id="authToggle">Create account</button></div>
+      <div class="auth-error" id="authError"></div>
+    </form>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
 const KEY='ledger_data', EXP_KEY='moneytotal_expenses', GOAL_KEY='moneytotal_goals', THEME_KEY='moneytotal_theme';
+const SUPABASE_URL='YOUR_SUPABASE_PROJECT_URL';
+const SUPABASE_PUBLISHABLE_KEY='YOUR_SUPABASE_PUBLISHABLE_KEY';
+const CLOUD_READY=SUPABASE_URL.startsWith('https://') && !SUPABASE_URL.includes('YOUR_') && !SUPABASE_PUBLISHABLE_KEY.includes('YOUR_');
+const supabaseClient=CLOUD_READY?window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY):null;
+let cloudUser=null, cloudSyncing=false, authCreate=false;
 const oldDefault=[
 {id:1,date:'',client:'lyrics edit',description:'Unnamed project',amount:100},
 {id:2,date:'2025-03-27',client:'yuvraj',description:'',amount:500},
@@ -240,7 +266,50 @@ function esc(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&l
 function isoToday(){return new Date().toISOString().slice(0,10)}
 function monthKey(date){return date?date.slice(0,7):'Undated'}
 function monthLabel(key){if(key==='Undated')return key;const [y,m]=key.split('-');return new Date(Number(y),Number(m)-1,1).toLocaleDateString('en-IN',{month:'short',year:'2-digit'})}
-function save(){localStorage.setItem(KEY,JSON.stringify(entries));localStorage.setItem(EXP_KEY,JSON.stringify(expenses));localStorage.setItem(GOAL_KEY,JSON.stringify(goals));}
+function save(){
+  localStorage.setItem(KEY,JSON.stringify(entries));localStorage.setItem(EXP_KEY,JSON.stringify(expenses));localStorage.setItem(GOAL_KEY,JSON.stringify(goals));
+  if(cloudUser) syncToCloud();
+}
+async function syncToCloud(){
+  if(!supabaseClient||!cloudUser||cloudSyncing)return;
+  cloudSyncing=true;setCloudStatus('syncing');
+  const {error}=await supabaseClient.from('piggi_bank_data').upsert({user_id:cloudUser.id,entries,expenses,goals,updated_at:new Date().toISOString()},{onConflict:'user_id'});
+  cloudSyncing=false;setCloudStatus(error?'error':'on'); if(error) console.error(error);
+}
+async function loadFromCloud(){
+  if(!supabaseClient||!cloudUser)return;
+  setCloudStatus('syncing');
+  const {data,error}=await supabaseClient.from('piggi_bank_data').select('entries,expenses,goals').eq('user_id',cloudUser.id).maybeSingle();
+  if(error){setCloudStatus('error');showToast('Cloud sync failed.');return}
+  const localHasData=entries.length>0||expenses.length>0||Number(goals.monthly)||Number(goals.yearly);
+  if(data){
+    if(localHasData && JSON.stringify({entries,expenses,goals})!==JSON.stringify({entries:data.entries||[],expenses:data.expenses||[],goals:data.goals||{monthly:0,yearly:0}})){
+      if(confirm('Cloud data already exists. Use cloud data and replace this device data?')){entries=(data.entries||[]).map(normalizeEntry);expenses=data.expenses||[];goals=data.goals||{monthly:0,yearly:0};localStorage.setItem(KEY,JSON.stringify(entries));localStorage.setItem(EXP_KEY,JSON.stringify(expenses));localStorage.setItem(GOAL_KEY,JSON.stringify(goals));renderAll()}
+      else await syncToCloud();
+    }else{entries=(data.entries||[]).map(normalizeEntry);expenses=data.expenses||[];goals=data.goals||{monthly:0,yearly:0};localStorage.setItem(KEY,JSON.stringify(entries));localStorage.setItem(EXP_KEY,JSON.stringify(expenses));localStorage.setItem(GOAL_KEY,JSON.stringify(goals));renderAll()}
+  }else{
+    await syncToCloud();
+  }
+  setCloudStatus('on');
+}
+function setCloudStatus(state){
+  const dot=document.getElementById('cloudDot'),label=document.getElementById('cloudLabel'),side=document.getElementById('cloudStatus');
+  if(!dot||!label)return;
+  dot.classList.toggle('on',state==='on');label.textContent=state==='on'?'Cloud synced':state==='syncing'?'Syncing…':state==='error'?'Sync error':'Cloud not connected';
+  if(side)side.innerHTML='<span class="dot"></span> '+(state==='on'?'Synced to cloud':state==='syncing'?'Syncing…':state==='error'?'Cloud error':'Local-only mode');
+}
+async function openCloud(){
+  if(!CLOUD_READY){showToast('Add your Supabase URL and publishable key first.');return}
+  if(cloudUser){if(confirm('Sign out of cloud sync? Your local copy will remain on this device.')){await supabaseClient.auth.signOut();cloudUser=null;setCloudStatus('off')}return}
+  document.getElementById('authBackdrop').classList.add('show');
+}
+async function initCloud(){
+  if(!CLOUD_READY){setCloudStatus('off');return}
+  const {data}=await supabaseClient.auth.getSession();cloudUser=data.session?.user||null;
+  if(cloudUser){setCloudStatus('on');await loadFromCloud()}
+  supabaseClient.auth.onAuthStateChange(async(_event,session)=>{cloudUser=session?.user||null;if(cloudUser){document.getElementById('authBackdrop').classList.remove('show');await loadFromCloud()}else setCloudStatus('off')});
+}
+
 function totals(list=entries){return list.reduce((a,e)=>{a.earned+=e.amount;a.collected+=e.paidAmount;a.pending+=e.amount-e.paidAmount;return a},{earned:0,collected:0,pending:0})}
 function thisMonth(list){const k=isoToday().slice(0,7);return list.filter(e=>monthKey(e.date)===k)}
 function thisYear(list){const y=isoToday().slice(0,4);return list.filter(e=>String(e.date||'').startsWith(y))}
@@ -371,8 +440,13 @@ document.getElementById('goalForm').onsubmit=e=>{e.preventDefault();goals={month
 document.getElementById('exportJson').onclick=backup;document.getElementById('backupBtn2').onclick=backup;document.getElementById('importJson').onclick=()=>document.getElementById('importFile').click();document.getElementById('restoreBtn2').onclick=()=>document.getElementById('importFile').click();document.getElementById('importFile').onchange=e=>{if(e.target.files[0])restore(e.target.files[0]);e.target.value=''};
 document.getElementById('themeBtn').onclick=()=>{localStorage.setItem(THEME_KEY,localStorage.getItem(THEME_KEY)==='light'?'dark':'light');applyTheme()};
 document.getElementById('menuBtn').onclick=()=>document.getElementById('sidebar').classList.toggle('open');
+document.getElementById('cloudBtn').onclick=openCloud;
+document.getElementById('authToggle').onclick=()=>{authCreate=!authCreate;document.getElementById('authToggle').textContent=authCreate?'Back to sign in':'Create account';document.getElementById('authSubmit').textContent=authCreate?'Create account':'Sign in';document.getElementById('authError').textContent=''};
+document.getElementById('authForm').onsubmit=async e=>{e.preventDefault();if(!supabaseClient)return;const email=document.getElementById('authEmail').value.trim(),password=document.getElementById('authPassword').value,errorEl=document.getElementById('authError');errorEl.textContent='';document.getElementById('authSubmit').disabled=true;const r=authCreate?await supabaseClient.auth.signUp({email,password}):await supabaseClient.auth.signInWithPassword({email,password});document.getElementById('authSubmit').disabled=false;if(r.error){errorEl.textContent=r.error.message;return}if(authCreate&&!r.data.session)errorEl.textContent='Check your email to confirm the account, then sign in.'};
+document.getElementById('authBackdrop').onclick=e=>{if(e.target.id==='authBackdrop')e.currentTarget.classList.remove('show')};
 
 applyTheme();
+initCloud();
 </script>
 </body>
 </html>
