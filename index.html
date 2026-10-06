@@ -110,11 +110,12 @@
     .cloud-dot{width:7px;height:7px;border-radius:50%;background:#777}.cloud-dot.on{background:var(--green);box-shadow:0 0 0 4px rgba(115,201,145,.08)}
     .auth-modal{width:min(430px,100%);background:#111;border:1px solid #333;border-radius:18px;box-shadow:0 30px 100px rgba(0,0,0,.6);padding:24px}
     .auth-modal h3{font-family:"Cormorant Garamond",Georgia,serif;font-size:32px;margin:0 0 6px}.auth-modal p{font-size:12px;color:#888;line-height:1.6;margin:0 0 20px}
+    body.auth-checking .app,body.auth-locked .app{display:none}
     .auth-actions{display:flex;gap:8px;margin-top:14px}.auth-error{color:var(--red);font-size:11px;margin-top:10px;min-height:16px}
     .user-email{font-size:10px;color:#777;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   </style>
 </head>
-<body>
+<body class="auth-checking">
 <div class="app">
   <div class="sidebar-overlay" id="sidebarOverlay"></div>
   <aside class="sidebar" id="sidebar">
@@ -215,8 +216,8 @@
 
 <div class="modal-backdrop" id="authBackdrop">
   <div class="auth-modal">
-    <div class="eyebrow">Cloud sync</div><h3>Your Piggi Bank, everywhere.</h3>
-    <p>Create an account or sign in to sync your transactions, expenses and goals across devices. Your existing local data will be offered for migration the first time you connect.</p>
+    <div class="eyebrow" id="authEyebrow">Private dashboard</div><h3 id="authTitle">Sign in to your Piggi Bank.</h3>
+    <p id="authDescription">This dashboard is private. Enter your account email and password to access your transactions, expenses and goals. You can create an account if you don't have one yet.</p>
     <form id="authForm">
       <div class="field"><label>Email</label><input class="input" id="authEmail" type="email" required placeholder="you@example.com"></div>
       <div class="field" style="margin-top:10px"><label>Password</label><input class="input" id="authPassword" type="password" minlength="6" required placeholder="At least 6 characters"></div>
@@ -299,16 +300,31 @@ function setCloudStatus(state){
   dot.classList.toggle('on',state==='on');label.textContent=state==='on'?'Cloud synced':state==='syncing'?'Syncing…':state==='error'?'Sync error':'Cloud not connected';
   if(side)side.innerHTML='<span class="dot"></span> '+(state==='on'?'Synced to cloud':state==='syncing'?'Syncing…':state==='error'?'Cloud error':'Local-only mode');
 }
+function lockApp(){
+  document.body.classList.add('auth-locked');document.body.classList.remove('auth-checking');
+  const b=document.getElementById('authBackdrop');b.classList.add('show','locked');
+  document.getElementById('authEyebrow').textContent='Private dashboard';
+  document.getElementById('authTitle').textContent='Sign in to your Piggi Bank.';
+  document.getElementById('authDescription').textContent='This dashboard is private. Enter your account email and password to access your transactions, expenses and goals.';
+}
+function unlockApp(){
+  document.body.classList.remove('auth-checking','auth-locked');document.getElementById('authBackdrop').classList.remove('show','locked');
+}
 async function openCloud(){
   if(!CLOUD_READY){showToast('Add your Supabase URL and publishable key first.');return}
-  if(cloudUser){if(confirm('Sign out of cloud sync? Your local copy will remain on this device.')){await supabaseClient.auth.signOut();cloudUser=null;setCloudStatus('off')}return}
-  document.getElementById('authBackdrop').classList.add('show');
+  if(cloudUser){if(confirm('Sign out of cloud sync? Your local copy will remain on this device.')){await supabaseClient.auth.signOut();cloudUser=null;setCloudStatus('off');lockApp()}return}
+  lockApp();
 }
 async function initCloud(){
-  if(!CLOUD_READY){setCloudStatus('off');return}
-  const {data}=await supabaseClient.auth.getSession();cloudUser=data.session?.user||null;
-  if(cloudUser){setCloudStatus('on');await loadFromCloud()}
-  supabaseClient.auth.onAuthStateChange(async(_event,session)=>{cloudUser=session?.user||null;if(cloudUser){document.getElementById('authBackdrop').classList.remove('show');await loadFromCloud()}else setCloudStatus('off')});
+  if(!CLOUD_READY){lockApp();return}
+  const {data,error}=await supabaseClient.auth.getSession();
+  if(error||!data.session){cloudUser=null;setCloudStatus('off');lockApp()}
+  else{cloudUser=data.session.user;setCloudStatus('on');await loadFromCloud();unlockApp()}
+  supabaseClient.auth.onAuthStateChange(async(_event,session)=>{
+    cloudUser=session?.user||null;
+    if(cloudUser){setCloudStatus('on');await loadFromCloud();unlockApp()}
+    else{setCloudStatus('off');lockApp()}
+  });
 }
 
 function totals(list=entries){return list.reduce((a,e)=>{a.earned+=e.amount;a.collected+=e.paidAmount;a.pending+=e.amount-e.paidAmount;return a},{earned:0,collected:0,pending:0})}
@@ -446,7 +462,7 @@ document.getElementById('sidebarOverlay').onclick=()=>{const sidebar=document.ge
 document.getElementById('cloudBtn').onclick=openCloud;
 document.getElementById('authToggle').onclick=()=>{authCreate=!authCreate;document.getElementById('authToggle').textContent=authCreate?'Back to sign in':'Create account';document.getElementById('authSubmit').textContent=authCreate?'Create account':'Sign in';document.getElementById('authError').textContent=''};
 document.getElementById('authForm').onsubmit=async e=>{e.preventDefault();if(!supabaseClient)return;const email=document.getElementById('authEmail').value.trim(),password=document.getElementById('authPassword').value,errorEl=document.getElementById('authError');errorEl.textContent='';document.getElementById('authSubmit').disabled=true;const r=authCreate?await supabaseClient.auth.signUp({email,password}):await supabaseClient.auth.signInWithPassword({email,password});document.getElementById('authSubmit').disabled=false;if(r.error){errorEl.textContent=r.error.message;return}if(authCreate&&!r.data.session)errorEl.textContent='Check your email to confirm the account, then sign in.'};
-document.getElementById('authBackdrop').onclick=e=>{if(e.target.id==='authBackdrop')e.currentTarget.classList.remove('show')};
+document.getElementById('authBackdrop').onclick=e=>{if(e.target.id==='authBackdrop'&&!e.currentTarget.classList.contains('locked'))e.currentTarget.classList.remove('show')};
 
 applyTheme();
 initCloud();
