@@ -229,8 +229,8 @@
 
 <script>
 const KEY='ledger_data', EXP_KEY='moneytotal_expenses', GOAL_KEY='moneytotal_goals', THEME_KEY='moneytotal_theme';
-const SUPABASE_URL='YOUR_SUPABASE_PROJECT_URL';
-const SUPABASE_PUBLISHABLE_KEY='YOUR_SUPABASE_PUBLISHABLE_KEY';
+const SUPABASE_URL='https://yxjefpnevqbfsgodvnrq.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY='sb_publishable_8xpa7LTE8H16nx4acMCBAA_D1clpn3q';
 const CLOUD_READY=SUPABASE_URL.startsWith('https://') && !SUPABASE_URL.includes('YOUR_') && !SUPABASE_PUBLISHABLE_KEY.includes('YOUR_');
 const supabaseClient=CLOUD_READY?window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY):null;
 let cloudUser=null, cloudSyncing=false, authCreate=false;
